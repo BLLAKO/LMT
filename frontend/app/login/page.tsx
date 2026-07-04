@@ -10,7 +10,7 @@ type Os = "mac" | "pc" | "linux";
 const DOWNLOADS: Record<Os, string | null> = {
   mac: "https://github.com/BLLAKO/LMT/releases/download/v0.1.0/ZeroDelay-0.1.0-arm64.dmg",
   pc: "https://github.com/BLLAKO/LMT/releases/download/v0.1.0/ZeroDelay-Windows-0.1.0.exe",
-  linux: null,
+  linux: "https://github.com/BLLAKO/LMT/releases/download/v0.1.0/ZeroDelay-0.1.0.AppImage",
 };
 
 const OS_LABELS: Record<Os, string> = {
