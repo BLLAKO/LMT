@@ -1,0 +1,91 @@
+# Corpus index for retrieval. The agent matches spoken intent against these entries
+# to select WHICH procedure to load, then executes its typed steps.
+version: 1
+domain: space
+generated: synthetic
+note: >-
+  Synthetic hackathon data (RAISE Summit 2026, Gemma Edge/On-Device track).
+  Not real NASA flight documentation. Do not use operationally.
+
+procedures:
+  - id: EVA-PREP-001
+    file: procedures/01-eva-prep-emu-airlock.md
+    title: EMU Suit Checkout and Airlock Egress
+    system: EMU / Quest Airlock
+    summary: >-
+      Don and check out the EMU spacesuit, verify comms and pre-breathe, then
+      depressurize the airlock and egress for a spacewalk.
+    tags: [eva, spacewalk, emu, suit, airlock, depress, prebreathe, egress, hero]
+    sensors_watched: [suit_pressure_psia, suit_o2_pct, suit_co2_mmHg, airlock_pressure_psia, suit_battery_pct]
+    related_diagrams: [emu-dcm-controls, emu-suit-callouts, airlock-valves, state-verification]
+    features: [procedure_state, safety_tiering, sensor_vs_assumption_crosscheck, emergency_mode, visual_verify]
+
+  - id: COOL-JMP-002
+    file: procedures/02-coolant-ammonia-jumper-rr.md
+    title: External Ammonia Coolant Jumper Remove & Replace
+    system: External Active Thermal Control (ETCS) / QD jumper
+    summary: >-
+      Remove and replace a leaking ammonia quick-disconnect (QD) coolant jumper on
+      the truss, using torque specs and verifying no ammonia release.
+    tags: [coolant, ammonia, qd, jumper, torque, pgt, replace, leak, etcs]
+    sensors_watched: [coolant_loop_pressure_psia, coolant_loop_temp_c, suit_co2_mmHg]
+    related_diagrams: [coolant-jumper-qd, pgt-display, state-verification]
+    features: [torque_lookup, inventory_replan, diagnostic_branching, emergency_mode]
+
+  - id: BATT-ORU-003
+    file: procedures/03-battery-oru-swap.md
+    title: Truss Battery ORU Swap
+    system: Truss / Battery Orbital Replacement Unit (ORU)
+    summary: >-
+      Remove a degraded battery ORU and install a replacement, following the bolt
+      torque sequence and enforcing correct step order.
+    tags: [battery, oru, truss, swap, torque, sequence, electrical, power]
+    sensors_watched: [battery_voltage_v, battery_temp_c, coolant_loop_temp_c]
+    related_diagrams: [battery-oru, pgt-display, state-verification]
+    features: [torque_sequence, skipped_step_detection, safety_tiering]
+
+  - id: CDRA-FAULT-004
+    file: procedures/04-cdra-co2-fault-response.md
+    title: CDRA CO2 Scrubber Fault Response
+    system: ECLSS / Carbon Dioxide Removal Assembly (CDRA)
+    summary: >-
+      Diagnose and respond to a rising cabin CO2 fault, branching on symptoms and
+      replanning if a spare bed or valve is unavailable.
+    tags: [cdra, co2, eclss, cabin, scrubber, fault, diagnostic, air]
+    sensors_watched: [cabin_co2_mmHg, cabin_pressure_psia, cdra_bed_temp_c, cdra_valve_state]
+    related_diagrams: [cdra-schematic, state-verification]
+    features: [diagnostic_branching, sensor_drift_alert, clarifying_questions, inventory_replan]
+
+reference:
+  - id: telemetry
+    file: reference/telemetry-nominal-ranges.yaml
+    title: Telemetry nominal / caution / critical ranges
+    tool: read_sensor
+  - id: torque
+    file: reference/torque-specs.yaml
+    title: Fastener torque specifications
+    tool: get_torque_spec
+  - id: inventory
+    file: reference/inventory.yaml
+    title: Tools and spare parts inventory
+    tool: check_inventory
+  - id: fault_trees
+    file: reference/fault-trees.yaml
+    title: Symptom-to-branch fault trees
+    tool: lookup_fault_tree
+  - id: glossary
+    file: reference/glossary.md
+    title: Acronym and term glossary
+
+diagrams:
+  prompts: diagrams/prompts.md
+  annotations_dir: diagrams/annotations/
+  ids:
+    - emu-dcm-controls
+    - emu-suit-callouts
+    - airlock-valves
+    - coolant-jumper-qd
+    - pgt-display
+    - battery-oru
+    - cdra-schematic
+    - state-verification

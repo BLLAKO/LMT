@@ -1,0 +1,97 @@
+# Tools and spare parts inventory.
+# Tool: check_inventory(part_id) -> { available, qty, location }.
+# part_id here is the shared vocabulary used by procedure required_tools / required_parts.
+# NOTE: some items are intentionally missing/low to trigger the agent's replan behavior.
+# Synthetic data for a hackathon demo.
+version: 1
+tool: check_inventory
+stowage_note: >-
+  Locations use synthetic ISS-style stowage codes (e.g. QUEST-A2 = Quest airlock
+  bag A2). "airlock_tool_caddy" is the caddy staged on the EVA crewmember.
+
+tools:
+  - part_id: PGT
+    name: Pistol Grip Tool
+    qty: 2
+    location: QUEST-A2
+    available: true
+  - part_id: SOCKET-7-16
+    name: 7/16 inch socket
+    qty: 3
+    location: QUEST-A2
+    available: true
+  - part_id: SOCKET-1-2
+    name: 1/2 inch socket
+    qty: 2
+    location: QUEST-A2
+    available: true
+  - part_id: SOCKET-3-8
+    name: 3/8 inch socket
+    qty: 2
+    location: NODE3-D1
+    available: true
+  - part_id: QD-COLLAR-TOOL
+    name: QD locking collar tool
+    qty: 1
+    location: QUEST-A2
+    available: true
+  - part_id: SAFETY-TETHER
+    name: EVA safety tether (55 ft)
+    qty: 4
+    location: QUEST-A1
+    available: true
+  - part_id: AMMONIA-DECON-BRUSH
+    name: Ammonia decontamination bakeout brush
+    qty: 1
+    location: QUEST-A3
+    available: true
+
+parts:
+  # ---- Coolant jumper spares ----
+  - part_id: QD-JMP-14
+    name: Ammonia QD coolant jumper, 14 inch
+    qty: 1
+    location: EXT-STOW-3
+    available: true
+    notes: "The direct replacement for the leaking jumper."
+  - part_id: QD-JMP-14-CAP
+    name: QD dust/cap set for JMP-14
+    qty: 0                # INTENTIONALLY MISSING -> triggers replan / clarifying question
+    location: EXT-STOW-3
+    available: false
+    notes: >-
+      Out of stock. Procedure COOL-JMP-002 expects a cap on the demated line;
+      agent must replan (use contingency cap CAP-GENERIC-2) or escalate.
+  - part_id: CAP-GENERIC-2
+    name: Generic QD contingency cap
+    qty: 2
+    location: EXT-STOW-3
+    available: true
+    notes: "Approved contingency substitute for QD-JMP-14-CAP."
+
+  # ---- Battery ORU ----
+  - part_id: BATT-ORU-B4
+    name: Battery ORU replacement unit B4
+    qty: 1
+    location: EXT-STOW-1
+    available: true
+  - part_id: BATT-ORU-CONN-COVER
+    name: Battery ORU connector protective cover
+    qty: 2
+    location: EXT-STOW-1
+    available: true
+
+  # ---- CDRA ----
+  - part_id: CDRA-SORBENT-BED
+    name: CDRA replacement sorbent bed
+    qty: 0                # INTENTIONALLY MISSING -> forces branch to bypass/valve reset
+    location: NODE3-D2
+    available: false
+    notes: >-
+      No spare bed aboard. CDRA-FAULT-004 must branch away from bed replacement to
+      valve reset / bypass and queue a resupply request.
+  - part_id: CDRA-SELECTOR-VALVE
+    name: CDRA selector valve assembly
+    qty: 1
+    location: NODE3-D2
+    available: true

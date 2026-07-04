@@ -1,0 +1,97 @@
+# Fastener torque specifications.
+# Tool: get_torque_spec(fastener_id) -> exact values. Facts are looked up, not retrieved.
+# fastener_id here is the shared vocabulary used by procedure step specs.torque.
+# Synthetic values for a hackathon demo; not real flight specs.
+version: 1
+tool: get_torque_spec
+tool_reference: PGT   # Pistol Grip Tool; see inventory.yaml
+
+fasteners:
+  # ---- Coolant QD jumper (COOL-JMP-002) ----
+  - fastener_id: HX-M6-COOL-A
+    location: Coolant QD jumper, structural capture bolt A
+    torque_nm: 12.2
+    torque_ftlb: 9.0
+    pgt_setting: 4
+    socket: 7/16in
+    direction: cw
+    turns_limit: 1.5
+    notes: "Capture bolt; snug then torque to spec. Do not exceed."
+
+  - fastener_id: HX-M6-COOL-B
+    location: Coolant QD jumper, structural capture bolt B
+    torque_nm: 12.2
+    torque_ftlb: 9.0
+    pgt_setting: 4
+    socket: 7/16in
+    direction: cw
+    turns_limit: 1.5
+    notes: "Torque A and B alternately in two passes."
+
+  - fastener_id: QD-COLLAR-14
+    location: QD-JMP-14 quick-disconnect locking collar
+    torque_nm: 5.6
+    torque_ftlb: 4.1
+    pgt_setting: 2
+    socket: collar-tool
+    direction: cw
+    notes: "Hand-mate first, verify alignment stripe, then torque collar."
+
+  # ---- Battery ORU bolts (BATT-ORU-003) ----
+  - fastener_id: BOLT-BATT-H1
+    location: Battery ORU primary structural bolt H1
+    torque_nm: 30.5
+    torque_ftlb: 22.5
+    pgt_setting: 7
+    socket: 1/2in
+    direction: cw
+    sequence_group: batt_primary
+    sequence_order: 1
+    notes: "Torque in sequence H1 -> H2 -> H3 -> H4, two passes."
+
+  - fastener_id: BOLT-BATT-H2
+    location: Battery ORU primary structural bolt H2
+    torque_nm: 30.5
+    torque_ftlb: 22.5
+    pgt_setting: 7
+    socket: 1/2in
+    direction: cw
+    sequence_group: batt_primary
+    sequence_order: 2
+
+  - fastener_id: BOLT-BATT-H3
+    location: Battery ORU primary structural bolt H3
+    torque_nm: 30.5
+    torque_ftlb: 22.5
+    pgt_setting: 7
+    socket: 1/2in
+    direction: cw
+    sequence_group: batt_primary
+    sequence_order: 3
+
+  - fastener_id: BOLT-BATT-H4
+    location: Battery ORU primary structural bolt H4
+    torque_nm: 30.5
+    torque_ftlb: 22.5
+    pgt_setting: 7
+    socket: 1/2in
+    direction: cw
+    sequence_group: batt_primary
+    sequence_order: 4
+
+  # ---- CDRA access panel (CDRA-FAULT-004) ----
+  - fastener_id: PNL-CDRA-Q
+    location: CDRA rack access panel quarter-turn fastener
+    torque_nm: 2.3
+    torque_ftlb: 1.7
+    pgt_setting: 1
+    socket: 3/8in
+    direction: cw
+    notes: "Quarter-turn captive fasteners; light torque only."
+
+sequences:
+  batt_primary:
+    description: Battery ORU primary bolts must be torqued in order, two passes.
+    order: [BOLT-BATT-H1, BOLT-BATT-H2, BOLT-BATT-H3, BOLT-BATT-H4]
+    passes: 2
+    note: "Out-of-order torque induces preload imbalance; flag if skipped."

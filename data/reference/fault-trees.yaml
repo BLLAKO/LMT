@@ -1,0 +1,84 @@
+# Symptom-to-branch fault trees.
+# Tool: lookup_fault_tree(tree_id, symptom) -> next action / branch target.
+# These drive dynamic diagnostic branching: the repair path changes with the symptom.
+# Synthetic data for a hackathon demo.
+version: 1
+tool: lookup_fault_tree
+
+trees:
+  # ---- Coolant QD leak diagnosis (COOL-JMP-002) ----
+  - tree_id: coolant_leak
+    system: External ammonia coolant loop
+    entry_symptom: "coolant loop pressure dropping"
+    tests:
+      - id: visual_qd
+        question: "Inspect the QD. What do you see?"
+        branches:
+          - symptom: "white frost only, no flakes"
+            meaning: "Minor seep / thermal frost. Reseat and torque collar."
+            goto_procedure: COOL-JMP-002
+            goto_step: 12
+            severity: caution
+          - symptom: "white flakes or snow (ammonia crystals)"
+            meaning: "Active ammonia release."
+            action: emergency
+            goto_procedure: COOL-JMP-002
+            note: "Ammonia release. Execute decon before ingress. Queue ground alert."
+            severity: critical
+          - symptom: "no visible frost but pressure still dropping"
+            meaning: "Leak is upstream of the QD; jumper R&R will not fix it."
+            action: escalate
+            note: "Leak not at QD. Halt R&R, escalate to ground for loop isolation plan."
+            severity: critical
+
+  # ---- CDRA rising CO2 diagnosis (CDRA-FAULT-004) ----
+  - tree_id: cdra_co2_rise
+    system: ECLSS CDRA
+    entry_symptom: "cabin CO2 rising above nominal"
+    tests:
+      - id: valve_state
+        question: "Read cdra_valve_state."
+        branches:
+          - symptom: "valve_state == fault or transition"
+            meaning: "Selector valve stuck; beds not cycling."
+            goto_procedure: CDRA-FAULT-004
+            goto_step: 8
+            severity: caution
+          - symptom: "valve_state normal but bed cold during desorb"
+            meaning: "Desorb heater failure on one bed."
+            goto_procedure: CDRA-FAULT-004
+            goto_step: 14
+            severity: caution
+          - symptom: "valve_state normal and bed temps normal"
+            meaning: "Sensor drift or upstream cause; needs clarifying questions."
+            action: clarify
+            note: "Ask: recent crew count change? Payload venting? Then reassess."
+            severity: routine
+      - id: spare_bed
+        question: "check_inventory(CDRA-SORBENT-BED)"
+        branches:
+          - symptom: "no spare bed available"
+            meaning: "Cannot replace bed."
+            action: replan
+            goto_step: 20
+            note: "Branch to valve reset + bypass; queue resupply request to ground."
+            severity: caution
+
+  # ---- EMU suit leak (EVA-PREP-001) ----
+  - tree_id: suit_leak
+    system: EMU
+    entry_symptom: "suit_pressure_psia dropping"
+    tests:
+      - id: rate
+        question: "How fast is suit pressure dropping?"
+        branches:
+          - symptom: "slow drift within caution band"
+            meaning: "Possible sensor noise or minor seep."
+            action: clarify
+            note: "Recheck reading; inspect wrist/glove seals."
+            severity: caution
+          - symptom: "rapid drop toward 3.7 psia"
+            meaning: "Real suit leak."
+            action: emergency
+            note: "Terminate EVA. Ingress airlock immediately. Queue ground alert."
+            severity: critical
