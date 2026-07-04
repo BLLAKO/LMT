@@ -35,6 +35,10 @@ GEMMA_FALLBACK_MODEL_ID = "google/gemma-4-E2B-it"
 
 # Load Gemma in 4-bit (bitsandbytes) to fit 8GB GPUs. Audio modules stay bf16.
 GEMMA_LOAD_IN_4BIT = os.environ.get("ZD_GEMMA_4BIT", "1") == "1"
+# Device placement. On an 8GB GPU, bitsandbytes 4-bit forbids CPU-offloaded layers,
+# so we pin the whole model to one GPU rather than letting "auto" spill to CPU.
+# Override with ZD_GEMMA_DEVICE_MAP (e.g. "auto", "cpu", "cuda:0").
+GEMMA_DEVICE_MAP = os.environ.get("ZD_GEMMA_DEVICE_MAP", "").strip()
 # Modules that must NOT be quantized (Gemma 4 audio pitfall) + the lm_head.
 GEMMA_QUANT_SKIP_MODULES = [
     "lm_head",

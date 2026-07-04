@@ -31,12 +31,15 @@ python -m pip install --upgrade pip
 
 ### 2. Install PyTorch FIRST (GPU-specific)
 
+Install `torch`, `torchvision`, and `torchaudio` together from the same CUDA index.
+`torchvision` is required by Gemma 4's image processor.
+
 ```powershell
 # RTX 3070 (Ampere):
-pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # RTX 5060 (Blackwell - needs newer CUDA):
-pip install --pre torch --index-url https://download.pytorch.org/whl/cu128
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
 Verify the GPU is visible:
@@ -150,8 +153,60 @@ The decision JSON shape is documented in [`agent/schema.py`](agent/schema.py).
 ## Configuration
 
 Override via environment variables (see [`config.py`](config.py)): `ZD_GEMMA_MODEL`,
-`ZD_GEMMA_4BIT`, `ZD_EMBED_MODEL`, `ZD_EMBED_DIM`, `ZD_PIPER_VOICE`, `ZD_TOP_K`,
-`ZD_TOOL_LOOP`, `ZD_MAX_NEW_TOKENS`, `ZD_WARMUP`.
+`ZD_GEMMA_4BIT`, `ZD_GEMMA_DEVICE_MAP`, `ZD_EMBED_MODEL`, `ZD_EMBED_DIM`, `ZD_PIPER_VOICE`,
+`ZD_TOP_K`, `ZD_TOOL_LOOP`, `ZD_MAX_NEW_TOKENS`, `ZD_WARMUP`.
+
+## Troubleshooting (read this before integrating)
+
+These are the exact errors we already hit and fixed. If setup was done correctly you
+should not see them, but they're documented so nobody loses time.
+
+### `ModuleNotFoundError: No module named 'torchvision'`
+Gemma 4 is multimodal, so `transformers` imports `torchvision` for the image path even on
+text-only calls. Install it from the **same CUDA index** as `torch` (a plain
+`pip install torchvision` can pull a CPU/mismatched build):
+
+```powershell
+# match your torch build - check with:  python -c "import torch; print(torch.__version__)"
+# cu128 (RTX 5060):
+pip install --pre torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# cu124 (RTX 3070):
+pip install torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+### `ValueError: Some modules are dispatched on the CPU or the disk`
+bitsandbytes 4-bit cannot keep layers on CPU. With `device_map="auto"` on a tight 8GB card,
+accelerate offloads part of the model to CPU and the quantizer aborts. We fixed this in
+[`models/gemma.py`](models/gemma.py): when a CUDA GPU is present the model is pinned fully to
+it (`device_map={"": 0}`) instead of `"auto"`. Override with `ZD_GEMMA_DEVICE_MAP` if needed
+(`auto`, `cpu`, `cuda:0`). If the model genuinely does not fit, switch to the smaller model
+with `$env:ZD_GEMMA_MODEL="google/gemma-4-E2B-it"`.
+
+### `FileNotFoundError: Piper voice not found ...`
+`hf download rhasspy/piper-voices ...` saves the voice into nested subfolders
+(`piper\en\en_US\lessac\medium\`). The code expects the pair directly in
+`backend\models\piper\`. Flatten them:
+
+```powershell
+Move-Item -Force backend\models\piper\en\en_US\lessac\medium\en_US-lessac-medium.onnx      backend\models\piper\
+Move-Item -Force backend\models\piper\en\en_US\lessac\medium\en_US-lessac-medium.onnx.json backend\models\piper\
+Remove-Item -Recurse -Force backend\models\piper\en
+```
+
+You should end up with exactly `en_US-lessac-medium.onnx` (~63 MB) and
+`en_US-lessac-medium.onnx.json` in `backend\models\piper\`.
+
+### First call is slow
+Cold start loads/places the 4-bit weights on the GPU (~30s) and the first turn can take
+~1-2 min. Subsequent turns are fast because the model is a process-wide singleton. Start the
+API with `$env:ZD_WARMUP="1"` so Gemma loads at startup instead of on the first request.
+
+### Verify the whole pipeline quickly
+```powershell
+python -c "import torch, torchvision; print(torch.cuda.is_available(), torchvision.__version__)"
+python -m backend.cli ask "coolant loop pressure is dropping"      # text -> structured JSON
+python -m backend.cli converse MarsMind/astronaut_query.wav         # voice -> STT -> agent -> TTS
+```
 
 ## Scope
 

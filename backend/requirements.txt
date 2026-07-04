@@ -1,8 +1,9 @@
 # ZeroDelay backend dependencies.
 #
-# IMPORTANT: install torch FIRST with the right CUDA build for your GPU, then this file.
-#   RTX 3070 (Ampere):   pip install torch --index-url https://download.pytorch.org/whl/cu124
-#   RTX 5060 (Blackwell): pip install --pre torch --index-url https://download.pytorch.org/whl/cu128
+# IMPORTANT: install torch + torchvision + torchaudio FIRST with the right CUDA build
+# for your GPU (torchvision is REQUIRED by Gemma 4's image processor), then this file.
+#   RTX 3070 (Ampere):   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+#   RTX 5060 (Blackwell): pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 # Then: pip install -r requirements.txt
 
 # Core ML / Gemma runtime

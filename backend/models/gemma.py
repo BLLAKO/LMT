@@ -62,12 +62,22 @@ class GemmaRuntime:
                     llm_int8_skip_modules=config.GEMMA_QUANT_SKIP_MODULES,
                 )
 
+            # Pick device placement. bitsandbytes 4-bit cannot keep layers on CPU,
+            # so when a GPU is present we pin the whole model to it (device_map={"":0})
+            # instead of "auto", which would offload to CPU on tight (8GB) VRAM.
+            if config.GEMMA_DEVICE_MAP:
+                device_map: Any = config.GEMMA_DEVICE_MAP
+            elif torch.cuda.is_available():
+                device_map = {"": 0}
+            else:
+                device_map = "auto"
+
             self._processor = AutoProcessor.from_pretrained(
                 self.model_id, padding_side="left"
             )
             self._model = AutoModelForMultimodalLM.from_pretrained(
                 self.model_id,
-                device_map="auto",
+                device_map=device_map,
                 dtype=torch.bfloat16,
                 quantization_config=quant_config,
             ).eval()

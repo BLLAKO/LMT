@@ -34,7 +34,8 @@ def synthesize_to_file(text: str, out_path: str | Path | None = None) -> Path:
         out_path = config.TTS_OUTPUT_DIR / f"speech_{uuid.uuid4().hex[:8]}.wav"
     out_path = Path(out_path)
     with wave.open(str(out_path), "wb") as wav_file:
-        voice.synthesize(text, wav_file)
+        # synthesize_wav writes the WAV header (channels/sample width/rate) itself.
+        voice.synthesize_wav(text, wav_file)
     return out_path
 
 
