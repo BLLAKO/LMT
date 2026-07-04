@@ -49,18 +49,45 @@
     flex: 1;
   }
   .history-item {
-    padding: 9px 10px;
-    border-radius: 8px;
-    font-size: 13px;
-    color: #55524a;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 2px;
-  }
-  .history-item:hover { background: #e6e2d8; }
-  .history-item.active { background: #e0dcd0; color: #2d2b26; font-weight: 500; }
+  padding: 9px 8px 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #55524a;
+  cursor: pointer;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.history-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.delete-history-btn {
+  background: transparent;
+  color: #9b9688;
+  border: none;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  opacity: 0;
+}
+
+.history-item:hover .delete-history-btn {
+  opacity: 1;
+}
+
+.delete-history-btn:hover {
+  background: #d8d2c5;
+  color: #2d2b26;
+}
+
+.history-item:hover { background: #e6e2d8; }
+.history-item.active { background: #e0dcd0; color: #2d2b26; font-weight: 500; }
 
   /* ---------- main column ---------- */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -226,6 +253,21 @@ const micBtn = document.getElementById('mic-btn');
 const historyList = document.getElementById('history-list');
 
 let currentConversationId = null;
+let currentTextRequest = null;
+let currentThinkingBubble = null;
+
+function stopThinking() {
+  if (currentTextRequest) {
+    currentTextRequest.abort();
+    currentTextRequest = null;
+  }
+
+  if (currentThinkingBubble && currentThinkingBubble.textContent === 'Thinking...') {
+    currentThinkingBubble.textContent = 'Stopped.';
+  }
+
+  hideStatus();
+}
 
 function showStatus(text, type) {
   statusBanner.textContent = text;
@@ -265,12 +307,39 @@ async function loadHistoryList() {
   try {
     const res = await fetch('/conversations');
     const items = await res.json();
+
     historyList.innerHTML = '';
+
     items.forEach(item => {
       const el = document.createElement('div');
       el.className = 'history-item' + (item.id === currentConversationId ? ' active' : '');
-      el.textContent = item.title || 'Untitled';
-      el.onclick = () => loadConversation(item.id);
+
+      const title = document.createElement('span');
+      title.className = 'history-title';
+      title.textContent = item.title || 'Untitled';
+      title.onclick = () => loadConversation(item.id);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-history-btn';
+      deleteBtn.textContent = '×';
+
+      deleteBtn.onclick = async (event) => {
+        event.stopPropagation();
+
+        await fetch('/conversations/' + item.id, {
+          method: 'DELETE'
+        });
+
+        if (currentConversationId === item.id) {
+          currentConversationId = null;
+          clearChat();
+        }
+
+        loadHistoryList();
+      };
+
+      el.appendChild(title);
+      el.appendChild(deleteBtn);
       historyList.appendChild(el);
     });
   } catch (err) {
@@ -321,32 +390,46 @@ async function startRecording() {
 }
 
 async function submitText() {
+  stopThinking();
+
   const input = document.getElementById('text-input');
   const query = input.value.trim();
   if (!query) return;
   input.value = '';
 
+  currentTextRequest = new AbortController();
+
   addMessage('user', query);
   const bubble = addMessage('assistant', 'Thinking...');
+  currentThinkingBubble = bubble;
   showStatus('Gemma is reasoning through the manuals...', 'info');
 
   try {
     const res = await fetch('/ask-text', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, conversation_id: currentConversationId })
+      body: JSON.stringify({ query, conversation_id: currentConversationId }),
+      signal: currentTextRequest.signal
     });
+
     const data = await res.json();
     hideStatus();
+    currentTextRequest = null;
 
     if (data.error) {
       bubble.textContent = data.error;
       return;
     }
+
     currentConversationId = data.conversation_id;
     bubble.textContent = data.answer;
     loadHistoryList();
   } catch (err) {
+    if (err.name === 'AbortError') {
+      bubble.textContent = 'Stopped.';
+      return;
+    }
+
     bubble.textContent = 'Error connecting to server: ' + err;
   }
 }
@@ -360,6 +443,7 @@ document.addEventListener('click', (e) => {
     document.getElementById('profile-menu').classList.remove('show');
   }
 });
+
 
 loadHistoryList();
 </script>
