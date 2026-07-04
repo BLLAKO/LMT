@@ -6,6 +6,7 @@ The heavy models load lazily on first use (or eagerly if ZD_WARMUP=1).
 from __future__ import annotations
 
 import base64
+import binascii
 import os
 import tempfile
 from pathlib import Path
@@ -13,6 +14,9 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Guardrail so a huge upload / base64 blob can't exhaust memory or disk.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 
 from .. import config
 from ..data_loader import load_corpus
@@ -72,6 +76,21 @@ def health() -> dict:
     return {"status": "ok", "gemma_model": config.GEMMA_MODEL_ID}
 
 
+@app.get("/ready")
+def ready() -> dict:
+    """Deep readiness: is the vector index built and the TTS voice present?
+    The frontend can poll this before enabling voice features."""
+    from ..index.retriever import index_is_ready
+
+    checks = {
+        "vector_index": index_is_ready(),
+        "piper_voice": config.PIPER_VOICE_PATH.exists(),
+        "offline_mode": config.OFFLINE,
+    }
+    checks["ready"] = bool(checks["vector_index"] and checks["piper_voice"])
+    return checks
+
+
 @app.get("/procedures")
 def procedures() -> dict:
     corpus = load_corpus()
@@ -112,38 +131,50 @@ def reset_sensors() -> dict:
 # Pipeline endpoints
 # ---------------------------------------------------------------------------
 @app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)) -> dict:
+def transcribe(audio: UploadFile = File(...)) -> dict:
     tmp = _save_upload(audio, suffix=".wav")
-    norm = vad.prepare_audio(tmp)
-    text = get_orchestrator().gemma.transcribe(norm)
+    try:
+        norm = vad.prepare_audio(tmp)
+        text = get_orchestrator().gemma.transcribe(norm)
+    finally:
+        _cleanup(tmp)
     return {"text": text}
 
 
 @app.post("/ask")
 def ask(req: AskRequest) -> dict:
     image_path = _decode_image(req.image_base64) if req.image_base64 else None
-    result = get_orchestrator().process_text(
-        req.query, live_image_path=image_path, speak=req.speak
-    )
+    try:
+        result = get_orchestrator().process_text(
+            req.query, live_image_path=image_path, speak=req.speak
+        )
+    finally:
+        _cleanup(image_path)
     return _with_audio(result)
 
 
 @app.post("/converse")
-async def converse(
+def converse(
     audio: UploadFile = File(...),
     image: UploadFile | None = File(None),
     speak: bool = Form(True),
 ) -> dict:
     tmp = _save_upload(audio, suffix=".wav")
-    norm = vad.prepare_audio(tmp)
-    if not vad.detect_speech(norm):
-        raise HTTPException(status_code=422, detail="No speech detected in audio.")
     image_path = None
-    if image is not None:
-        image_path = _save_upload(image, suffix=Path(image.filename or "img.png").suffix)
-    result = get_orchestrator().process_audio(
-        norm, live_image_path=image_path, speak=speak
-    )
+    try:
+        norm = vad.prepare_audio(tmp)
+        if not vad.detect_speech(norm):
+            raise HTTPException(status_code=422, detail="No speech detected in audio.")
+        if image is not None:
+            image_path = _save_upload(
+                image, suffix=Path(image.filename or "img.png").suffix
+            )
+        result = get_orchestrator().process_audio(
+            norm, live_image_path=image_path, speak=speak
+        )
+    finally:
+        _cleanup(tmp)
+        _cleanup(image_path)
     return _with_audio(result)
 
 
@@ -161,19 +192,42 @@ def tts(req: TTSRequest):
 # Helpers
 # ---------------------------------------------------------------------------
 def _save_upload(upload: UploadFile, suffix: str) -> Path:
+    data = upload.file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty upload.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload too large.")
     fd, path = tempfile.mkstemp(suffix=suffix)
     with os.fdopen(fd, "wb") as f:
-        f.write(upload.file.read())
+        f.write(data)
     return Path(path)
 
 
 def _decode_image(b64: str) -> Path:
     if "," in b64:  # strip data URL prefix
         b64 = b64.split(",", 1)[1]
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid base64 image.")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty image.")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large.")
     fd, path = tempfile.mkstemp(suffix=".png")
     with os.fdopen(fd, "wb") as f:
-        f.write(base64.b64decode(b64))
+        f.write(raw)
     return Path(path)
+
+
+def _cleanup(path) -> None:
+    """Best-effort delete of a temp file."""
+    if not path:
+        return
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _with_audio(result: dict) -> dict:

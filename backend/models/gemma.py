@@ -33,6 +33,8 @@ class GemmaRuntime:
         self._model = None
         self._processor = None
         self._lock = threading.Lock()
+        # Serializes generation so concurrent API requests don't interleave on one GPU.
+        self._gen_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Loading
@@ -48,7 +50,9 @@ class GemmaRuntime:
             if self._model is not None:
                 return
             import torch
-            from transformers import AutoModelForMultimodalLM, AutoProcessor
+            from transformers import AutoProcessor
+
+            model_cls = _resolve_model_class()
 
             quant_config = None
             if self.load_in_4bit:
@@ -65,21 +69,19 @@ class GemmaRuntime:
             # Pick device placement. bitsandbytes 4-bit cannot keep layers on CPU,
             # so when a GPU is present we pin the whole model to it (device_map={"":0})
             # instead of "auto", which would offload to CPU on tight (8GB) VRAM.
-            if config.GEMMA_DEVICE_MAP:
-                device_map: Any = config.GEMMA_DEVICE_MAP
-            elif torch.cuda.is_available():
-                device_map = {"": 0}
-            else:
-                device_map = "auto"
+            device_map = _resolve_device_map(torch)
 
+            # Offline mode forbids any Hugging Face network call (privacy demo).
+            offline = config.OFFLINE
             self._processor = AutoProcessor.from_pretrained(
-                self.model_id, padding_side="left"
+                self.model_id, padding_side="left", local_files_only=offline
             )
-            self._model = AutoModelForMultimodalLM.from_pretrained(
+            self._model = model_cls.from_pretrained(
                 self.model_id,
                 device_map=device_map,
                 dtype=torch.bfloat16,
                 quantization_config=quant_config,
+                local_files_only=offline,
             ).eval()
 
     def warmup(self) -> None:
@@ -106,7 +108,7 @@ class GemmaRuntime:
         ).to(self._model.device)
 
         input_len = inputs["input_ids"].shape[-1]
-        with torch.inference_mode():
+        with self._gen_lock, torch.inference_mode():
             generated = self._model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
@@ -147,6 +149,42 @@ class GemmaRuntime:
         return self._generate(
             messages, max_new_tokens or config.GEMMA_MAX_NEW_TOKENS
         )
+
+
+def _resolve_model_class():
+    """Return the transformers auto-class for Gemma 4 that exists in this install.
+
+    Newer transformers expose `AutoModelForMultimodalLM`; some versions only have
+    `AutoModelForImageTextToText`. Trying both keeps the code portable across the
+    versions teammates may have installed.
+    """
+    import transformers
+
+    for name in ("AutoModelForMultimodalLM", "AutoModelForImageTextToText"):
+        cls = getattr(transformers, name, None)
+        if cls is not None:
+            return cls
+    raise ImportError(
+        "No supported Gemma 4 auto-class found in transformers "
+        f"{getattr(transformers, '__version__', '?')}. Upgrade with: "
+        "pip install -U transformers"
+    )
+
+
+def _resolve_device_map(torch):
+    """Resolve the device_map, parsing 'cuda:0'-style overrides into the dict form
+    that from_pretrained expects (a bare 'cuda:0' string is not a valid device_map)."""
+    override = config.GEMMA_DEVICE_MAP
+    if override:
+        # Keyword strategies stay as strings; explicit devices become {"": device}.
+        if override in {"auto", "balanced", "balanced_low_0", "sequential"}:
+            return override
+        if override.isdigit():
+            return {"": int(override)}
+        return {"": override}
+    if torch.cuda.is_available():
+        return {"": 0}
+    return "auto"
 
 
 # Process-wide singleton so the model is loaded at most once.

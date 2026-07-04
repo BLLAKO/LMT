@@ -8,6 +8,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+
+def _env_int(name: str, default: int) -> int:
+    """Parse an int env var, falling back to the default on a bad value."""
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -35,6 +46,14 @@ GEMMA_FALLBACK_MODEL_ID = "google/gemma-4-E2B-it"
 
 # Load Gemma in 4-bit (bitsandbytes) to fit 8GB GPUs. Audio modules stay bf16.
 GEMMA_LOAD_IN_4BIT = os.environ.get("ZD_GEMMA_4BIT", "1") == "1"
+# Offline mode: force local-only model loading (no Hugging Face network calls). Required
+# for the offline/privacy demo. Enable with ZD_OFFLINE=1 once all models are cached.
+OFFLINE = os.environ.get("ZD_OFFLINE", "0") == "1"
+if OFFLINE:
+    # Belt-and-suspenders: covers transformers, sentence-transformers, and hf_hub,
+    # including any indirect loads we don't pass local_files_only to explicitly.
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 # Device placement. On an 8GB GPU, bitsandbytes 4-bit forbids CPU-offloaded layers,
 # so we pin the whole model to one GPU rather than letting "auto" spill to CPU.
 # Override with ZD_GEMMA_DEVICE_MAP (e.g. "auto", "cpu", "cuda:0").
@@ -52,7 +71,7 @@ GEMMA_QUANT_SKIP_MODULES = [
 EMBED_MODEL_ID = os.environ.get("ZD_EMBED_MODEL", "google/embeddinggemma-300M")
 EMBED_DEVICE = os.environ.get("ZD_EMBED_DEVICE", "cpu")
 # Matryoshka truncation: 256 dims is ~3x faster with minimal quality loss.
-EMBED_DIM = int(os.environ.get("ZD_EMBED_DIM", "256"))
+EMBED_DIM = _env_int("ZD_EMBED_DIM", 256)
 EMBED_QUERY_PROMPT = "Retrieval-query"
 EMBED_DOCUMENT_PROMPT = "Retrieval-document"
 
@@ -70,10 +89,10 @@ AUDIO_MAX_SECONDS = 30     # Gemma 4 audio clips are capped at 30s
 # ---------------------------------------------------------------------------
 # Retrieval / agent tunables
 # ---------------------------------------------------------------------------
-RETRIEVAL_TOP_K = int(os.environ.get("ZD_TOP_K", "3"))
-TOOL_LOOP_MAX_ITERS = int(os.environ.get("ZD_TOOL_LOOP", "2"))
-GEMMA_MAX_NEW_TOKENS = int(os.environ.get("ZD_MAX_NEW_TOKENS", "512"))
-ASR_MAX_NEW_TOKENS = int(os.environ.get("ZD_ASR_MAX_NEW_TOKENS", "128"))
+RETRIEVAL_TOP_K = _env_int("ZD_TOP_K", 3)
+TOOL_LOOP_MAX_ITERS = _env_int("ZD_TOOL_LOOP", 2)
+GEMMA_MAX_NEW_TOKENS = _env_int("ZD_MAX_NEW_TOKENS", 512)
+ASR_MAX_NEW_TOKENS = _env_int("ZD_ASR_MAX_NEW_TOKENS", 128)
 
 
 def ensure_dirs() -> None:

@@ -78,8 +78,7 @@ reference:
     title: Acronym and term glossary
 
 diagrams:
-  prompts: diagrams/prompts.md
-  annotations_dir: diagrams/annotations/
+  # The vision model reads the PNGs directly; no annotation/prompt files are required.
   ids:
     - emu-dcm-controls
     - emu-suit-callouts

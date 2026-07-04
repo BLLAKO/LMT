@@ -16,6 +16,8 @@ VALID_ACTIONS = {
     "advance",
     "block",
     "branch",
+    "replan",
+    "repeat",
     "escalate",
     "emergency",
     "clarify",
@@ -51,7 +53,7 @@ class Decision:
 # The JSON contract injected into the prompt.
 SCHEMA_HINT = """Return ONLY a single JSON object, no prose, no code fences, with this shape:
 {
-  "action": "answer | advance | block | branch | escalate | emergency | clarify | tool_request",
+  "action": "answer | advance | block | branch | replan | repeat | escalate | emergency | clarify | tool_request",
   "spoken_text": "concise words to speak to the technician",
   "procedure_id": "e.g. EVA-PREP-001 or null",
   "step_id": 7,

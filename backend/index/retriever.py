@@ -55,19 +55,26 @@ class Retriever:
         qvec = embedder.embed_query(query)
         conn = connect(self.db_path)
         try:
+            _ensure_index_ready(conn, self.db_path)
+            total = conn.execute("SELECT COUNT(*) FROM documents;").fetchone()[0] or 0
+            # sqlite-vec applies the KNN `k` BEFORE any extra WHERE filter, so filtering
+            # by doc_type inside the query can starve one type (e.g. return 0 procedures
+            # if the nearest rows are all diagrams). Fetch the full ranking, then filter
+            # and cap in Python. The corpus is tiny, so this is cheap and correct.
             rows = conn.execute(
                 """
                 SELECT d.doc_type, d.ref_id, d.title, d.image_path, v.distance
                 FROM vec_documents v
                 JOIN documents d ON d.id = v.rowid
-                WHERE v.embedding MATCH ? AND k = ? AND d.doc_type = ?
+                WHERE v.embedding MATCH ? AND k = ?
                 ORDER BY v.distance;
                 """,
-                (serialize_float32(qvec.tolist()), k, doc_type),
+                (serialize_float32(qvec.tolist()), max(total, 1)),
             ).fetchall()
         finally:
             conn.close()
-        return rows
+        filtered = [r for r in rows if r[0] == doc_type]
+        return filtered[:k]
 
     def retrieve(
         self,
@@ -119,3 +126,38 @@ class Retriever:
 def _distance_to_score(distance: float) -> float:
     """Convert L2/cosine distance to a rough 0..1 similarity for display."""
     return round(1.0 / (1.0 + float(distance)), 4)
+
+
+def _ensure_index_ready(conn, db_path) -> None:
+    """Fail with a clear, actionable message if the vector index isn't built yet.
+
+    Without this, sqlite auto-creates an empty DB file and retrieval crashes deep in a
+    'no such table' error. This surfaces the real fix instead.
+    """
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table','view');"
+        ).fetchall()
+    }
+    if "documents" not in tables or "vec_documents" not in tables:
+        raise RuntimeError(
+            f"Vector index not found at {db_path}. Build it first with: "
+            "python -m backend.index.build_index"
+        )
+
+
+def index_is_ready(db_path=None) -> bool:
+    """Non-raising readiness check (used by the API /ready endpoint)."""
+    path = Path(db_path or config.VECTOR_DB_PATH)
+    if not path.exists():
+        return False
+    try:
+        conn = connect(path)
+        try:
+            _ensure_index_ready(conn, path)
+            return conn.execute("SELECT COUNT(*) FROM documents;").fetchone()[0] > 0
+        finally:
+            conn.close()
+    except Exception:
+        return False

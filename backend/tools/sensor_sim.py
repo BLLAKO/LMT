@@ -77,11 +77,26 @@ def _default_value(spec: dict[str, Any]) -> Any:
     return lo if lo is not None else 0.0
 
 
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
 def _classify(spec: dict[str, Any], value: Any) -> str:
     # Categorical sensors (e.g. cdra_valve_state).
     if spec.get("unit") == "enum":
-        fault_states = spec.get("fault_state", []) or []
-        return "critical" if value in fault_states else "nominal"
+        enum_values = _as_list(spec.get("enum"))
+        fault_states = _as_list(spec.get("fault_state"))
+        nominal_states = _as_list(spec.get("nominal_state"))
+        if value in fault_states:
+            return "critical"
+        if value in nominal_states:
+            return "nominal"
+        # A value outside the declared enum is bad data, not a safe reading.
+        if enum_values and value not in enum_values:
+            return "unknown"
+        return "caution"
 
     if value is None:
         return "unknown"

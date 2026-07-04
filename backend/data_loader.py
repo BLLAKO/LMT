@@ -6,6 +6,7 @@ how to read all of it, so the rest of the backend works with clean objects.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Any
 import yaml
 
 from . import config
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +110,7 @@ def load_procedures(manifest: dict[str, Any]) -> dict[str, Procedure]:
             continue
         path = config.DATA_DIR / rel
         if not path.exists():
+            logger.warning("Procedure file listed in manifest is missing: %s", path)
             continue
         text = path.read_text(encoding="utf-8")
         fm, prose = split_front_matter(text)

@@ -51,6 +51,8 @@ def prepare_audio(input_path: str | Path, out_path: str | Path | None = None) ->
     """Normalize any input clip to a 16 kHz mono, <=30s wav; return the new path."""
     config.ensure_dirs()
     audio, sr = read_wav(input_path)
+    if audio.size == 0:
+        raise ValueError("Audio clip is empty (no samples).")
     audio, sr = resample_to_16k_mono(audio, sr)
     audio = cap_duration(audio, sr)
     if out_path is None:

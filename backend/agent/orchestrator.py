@@ -62,12 +62,17 @@ class Orchestrator:
 
         # Assemble image inputs: top reference diagram(s) + optional live camera image.
         images = self._collect_images(retrieval, live_image_path)
+        attached_diagram_ids = self._attached_diagram_ids(retrieval)
         has_live_image = live_image_path is not None
 
         tool_results: list[dict[str, Any]] = []
         decision: Decision | None = None
+        max_iters = config.TOOL_LOOP_MAX_ITERS
 
-        for _ in range(config.TOOL_LOOP_MAX_ITERS + 1):
+        for i in range(max_iters + 1):
+            # The final pass forbids more tool calls so the loop always ends with a
+            # real, executable decision (never a dangling tool_request).
+            force_final = i == max_iters
             prompt = prompt_builder.build_prompt(
                 query=query,
                 retrieval=retrieval,
@@ -75,17 +80,17 @@ class Orchestrator:
                 sensor_snapshot=snapshot,
                 tool_results=tool_results or None,
                 has_live_image=has_live_image,
+                attached_diagram_ids=attached_diagram_ids,
+                force_final=force_final,
             )
             raw = self.gemma.reason(prompt, images=images)
             decision = parse_decision(raw) or fallback_decision(raw)
 
-            if decision.action == "tool_request" and decision.tool_request:
-                if len(tool_results) >= config.TOOL_LOOP_MAX_ITERS:
-                    # Out of tool budget: force a final answer next iteration.
-                    tool_results.append(
-                        {"note": "tool budget exhausted; answer with what you have"}
-                    )
-                    continue
+            if (
+                not force_final
+                and decision.action == "tool_request"
+                and decision.tool_request
+            ):
                 tr = decision.tool_request
                 output = reference_tools.run_tool(tr.tool, tr.args)
                 tool_results.append({"tool": tr.tool, "args": tr.args, "result": output})
@@ -94,6 +99,16 @@ class Orchestrator:
 
         if decision is None:
             decision = fallback_decision("I could not process that. Please repeat.")
+
+        # Safety net: never hand the client a tool_request we did not execute.
+        if decision.action == "tool_request":
+            decision.action = "clarify" if not decision.spoken_text else "answer"
+            decision.tool_request = None
+            if not decision.spoken_text:
+                decision.spoken_text = (
+                    "I need more information to continue safely. Please repeat the "
+                    "current step or the last reading."
+                )
 
         tts_path = None
         if speak and decision.spoken_text:
@@ -122,6 +137,17 @@ class Orchestrator:
         if live_image_path:
             images.append(str(live_image_path))
         return images
+
+    def _attached_diagram_ids(self, retrieval) -> list[str]:
+        """Ids of the diagrams actually sent to the vision model (same cap as images),
+        so the prompt only claims an image is 'attached' when it truly is."""
+        ids: list[str] = []
+        for d in retrieval.diagrams:
+            if len(ids) >= _MAX_DIAGRAM_IMAGES:
+                break
+            if d.image_exists:
+                ids.append(d.diagram_id)
+        return ids
 
     def _speak(self, text: str):
         from ..models import tts
