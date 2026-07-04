@@ -1,0 +1,30 @@
+# ZeroDelay backend dependencies.
+#
+# IMPORTANT: install torch FIRST with the right CUDA build for your GPU, then this file.
+#   RTX 3070 (Ampere):   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   RTX 5060 (Blackwell): pip install --pre torch --index-url https://download.pytorch.org/whl/cu128
+# Then: pip install -r requirements.txt
+
+# Core ML / Gemma runtime
+transformers>=4.57.0
+accelerate>=1.2.0
+bitsandbytes>=0.45.0
+sentence-transformers>=3.3.0
+
+# Vector store
+sqlite-vec>=0.1.6
+
+# Audio I/O + VAD + TTS
+soundfile>=0.12.1
+numpy>=1.26.0
+silero-vad>=5.1
+piper-tts>=1.2.0
+
+# Data parsing
+PyYAML>=6.0.2
+Pillow>=10.4.0
+
+# API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12

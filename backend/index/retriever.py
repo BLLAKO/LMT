@@ -1,0 +1,121 @@
+"""Query-time retrieval over the sqlite-vec index.
+
+Retrieval only decides WHICH procedure and WHICH diagram(s) are relevant. The exact
+facts (torque, ranges, inventory) are resolved later via deterministic tools, not
+vector search, which is what keeps this out of "basic RAG" territory.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from sqlite_vec import serialize_float32
+
+from .. import config
+from ..data_loader import Corpus, load_corpus
+from ..models import embedder
+from .build_index import connect
+
+
+@dataclass
+class RetrievedProcedure:
+    procedure_id: str
+    title: str
+    score: float
+
+
+@dataclass
+class RetrievedDiagram:
+    diagram_id: str
+    title: str
+    image_path: str
+    image_exists: bool
+    score: float
+
+
+@dataclass
+class RetrievalResult:
+    query: str
+    procedures: list[RetrievedProcedure] = field(default_factory=list)
+    diagrams: list[RetrievedDiagram] = field(default_factory=list)
+
+    @property
+    def top_procedure_id(self) -> str | None:
+        return self.procedures[0].procedure_id if self.procedures else None
+
+
+class Retriever:
+    """Loads the corpus once and serves fast vector searches."""
+
+    def __init__(self, db_path=None):
+        self.db_path = db_path or config.VECTOR_DB_PATH
+        self.corpus: Corpus = load_corpus()
+
+    def _search(self, query: str, doc_type: str, k: int) -> list[tuple]:
+        qvec = embedder.embed_query(query)
+        conn = connect(self.db_path)
+        try:
+            rows = conn.execute(
+                """
+                SELECT d.doc_type, d.ref_id, d.title, d.image_path, v.distance
+                FROM vec_documents v
+                JOIN documents d ON d.id = v.rowid
+                WHERE v.embedding MATCH ? AND k = ? AND d.doc_type = ?
+                ORDER BY v.distance;
+                """,
+                (serialize_float32(qvec.tolist()), k, doc_type),
+            ).fetchall()
+        finally:
+            conn.close()
+        return rows
+
+    def retrieve(
+        self,
+        query: str,
+        k_procedures: int | None = None,
+        k_diagrams: int = 2,
+        include_linked_diagrams: bool = True,
+    ) -> RetrievalResult:
+        k_proc = k_procedures or config.RETRIEVAL_TOP_K
+        result = RetrievalResult(query=query)
+
+        for _dt, ref_id, title, _img, dist in self._search(query, "procedure", k_proc):
+            result.procedures.append(
+                RetrievedProcedure(ref_id, title, _distance_to_score(dist))
+            )
+
+        diagram_hits: dict[str, RetrievedDiagram] = {}
+        for _dt, ref_id, title, image_path, dist in self._search(query, "diagram", k_diagrams):
+            diagram_hits[ref_id] = RetrievedDiagram(
+                diagram_id=ref_id,
+                title=title,
+                image_path=image_path or "",
+                image_exists=bool(image_path and Path(image_path).exists()),
+                score=_distance_to_score(dist),
+            )
+
+        # Also include diagrams structurally linked to the top procedure, so a step's
+        # verify.visual_ref is always available even if it did not match by text.
+        if include_linked_diagrams and result.top_procedure_id:
+            proc = self.corpus.procedures.get(result.top_procedure_id)
+            if proc:
+                for diagram_id in proc.related_diagrams:
+                    if diagram_id in diagram_hits:
+                        continue
+                    diagram = self.corpus.diagrams.get(diagram_id)
+                    if diagram:
+                        diagram_hits[diagram_id] = RetrievedDiagram(
+                            diagram_id=diagram_id,
+                            title=diagram.title,
+                            image_path=str(diagram.image_path),
+                            image_exists=diagram.image_exists,
+                            score=0.0,  # linked, not similarity-ranked
+                        )
+
+        result.diagrams = list(diagram_hits.values())
+        return result
+
+
+def _distance_to_score(distance: float) -> float:
+    """Convert L2/cosine distance to a rough 0..1 similarity for display."""
+    return round(1.0 / (1.0 + float(distance)), 4)

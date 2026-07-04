@@ -1,0 +1,15 @@
+# Generated artifacts
+artifacts/
+*.sqlite
+*.sqlite-*
+
+# Downloaded model weights (keep out of git)
+models/piper/*.onnx
+models/piper/*.onnx.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
