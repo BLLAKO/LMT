@@ -1,0 +1,131 @@
+# Telemetry nominal / caution / critical ranges.
+# Tool: read_sensor(name) -> current value; the agent compares against these bands.
+# Sensor `name`s here are the shared vocabulary used by procedure step preconditions.
+# Synthetic values for a hackathon demo; not real flight limits.
+version: 1
+tool: read_sensor
+
+sensors:
+  # ---- EMU spacesuit ----
+  - name: suit_pressure_psia
+    label: EMU suit internal pressure
+    unit: psia
+    nominal: { min: 4.1, max: 4.5 }
+    caution: { min: 3.9, max: 4.7 }
+    critical_below: 3.7
+    critical_above: 5.0
+    notes: "Operating suit pressure ~4.3 psia. Rapid drop indicates a leak."
+
+  - name: suit_o2_pct
+    label: EMU oxygen concentration
+    unit: "%"
+    nominal: { min: 95.0, max: 100.0 }
+    caution: { min: 90.0, max: 95.0 }
+    critical_below: 85.0
+    notes: "Low O2 concentration compromises breathing gas."
+
+  - name: suit_co2_mmHg
+    label: EMU CO2 partial pressure
+    unit: mmHg
+    nominal: { min: 0.0, max: 4.0 }
+    caution: { min: 4.0, max: 7.6 }
+    critical_above: 7.6
+    notes: "Rising CO2 indicates scrubber saturation; 7.6 mmHg is the hard limit."
+
+  - name: suit_battery_pct
+    label: EMU battery state of charge
+    unit: "%"
+    nominal: { min: 40.0, max: 100.0 }
+    caution: { min: 25.0, max: 40.0 }
+    critical_below: 20.0
+    notes: "Below 20% terminate EVA and ingress."
+
+  # ---- Airlock ----
+  - name: airlock_pressure_psia
+    label: Quest airlock pressure
+    unit: psia
+    nominal: { min: 14.5, max: 14.9 }   # pressurized (cabin) nominal
+    caution: { min: 2.0, max: 14.5 }
+    hatch_open_max: 2.0
+    critical_above: 14.9
+    notes: >-
+      Cabin-pressurized nominal ~14.7 psia. For hatch egress the airlock must be
+      depressurized BELOW 2.0 psia (hatch_open_max). Opening above this risks
+      explosive decompression.
+
+  # ---- External ammonia coolant loop ----
+  - name: coolant_loop_pressure_psia
+    label: External coolant loop (ammonia) pressure
+    unit: psia
+    nominal: { min: 100.0, max: 480.0 }
+    caution: { min: 480.0, max: 600.0 }
+    critical_above: 600.0
+    safe_to_open_below: 5.0
+    notes: >-
+      Loop must be vented BELOW 5.0 psia (safe_to_open_below) before demating a QD.
+      Demating a pressurized loop causes an ammonia release.
+
+  - name: coolant_loop_temp_c
+    label: External coolant loop temperature
+    unit: C
+    nominal: { min: -40.0, max: 5.0 }
+    caution: { min: 5.0, max: 20.0 }
+    critical_above: 20.0
+    notes: "Ammonia loop runs cold; warm readings suggest flow loss."
+
+  # ---- Truss battery ORU ----
+  - name: battery_voltage_v
+    label: Battery ORU bus voltage
+    unit: V
+    nominal: { min: 96.0, max: 123.0 }
+    caution: { min: 90.0, max: 96.0 }
+    critical_below: 85.0
+    safe_to_handle_below: 5.0
+    notes: >-
+      Must confirm bus is safed and voltage BELOW 5.0 V (safe_to_handle_below)
+      before demating power connectors.
+
+  - name: battery_temp_c
+    label: Battery ORU temperature
+    unit: C
+    nominal: { min: -20.0, max: 30.0 }
+    caution: { min: 30.0, max: 45.0 }
+    critical_above: 45.0
+    notes: "Thermal runaway risk above 45 C."
+
+  # ---- Cabin / ECLSS / CDRA ----
+  - name: cabin_co2_mmHg
+    label: Cabin CO2 partial pressure
+    unit: mmHg
+    nominal: { min: 0.0, max: 3.0 }
+    caution: { min: 3.0, max: 5.3 }
+    critical_above: 5.3
+    notes: "Rising cabin CO2 indicates CDRA scrubber degradation or failure."
+
+  - name: cabin_pressure_psia
+    label: Cabin total pressure
+    unit: psia
+    nominal: { min: 14.5, max: 14.9 }
+    caution: { min: 13.9, max: 14.5 }
+    critical_below: 13.5
+    notes: "Cabin nominal ~14.7 psia."
+
+  - name: cdra_bed_temp_c
+    label: CDRA sorbent bed temperature
+    unit: C
+    nominal: { min: 15.0, max: 230.0 }
+    caution: { min: 230.0, max: 260.0 }
+    critical_above: 260.0
+    notes: >-
+      Bed cycles hot during desorb (heater ~200 C). A bed stuck cold during desorb,
+      or overtemp, indicates a heater or valve fault.
+
+  - name: cdra_valve_state
+    label: CDRA selector valve position
+    unit: enum
+    enum: [adsorb, desorb, transition, fault]
+    nominal_state: [adsorb, desorb]
+    fault_state: [transition, fault]
+    notes: >-
+      A valve stuck in `transition` or reporting `fault` stops air processing.
+      This is a categorical sensor: use `equals` / `not_equals` checks.
