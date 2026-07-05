@@ -15,3 +15,12 @@ backend/models/piper/*.onnx.json
 
 # Cursor
 .cursor/
+
+# Node / Next.js frontend
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Stray root lockfile (no root package.json; real lockfile is frontend/package-lock.json)
+/package-lock.json

@@ -7,7 +7,10 @@ at the nominal midpoint; the demo can inject anomalies (e.g. a stuck airlock at
 """
 from __future__ import annotations
 
+import math
+import random
 import threading
+import time
 from typing import Any
 
 from ..data_loader import load_corpus
@@ -18,6 +21,10 @@ class SensorSimulator:
         self._lock = threading.Lock()
         self._specs: dict[str, dict[str, Any]] = {}
         self._values: dict[str, Any] = {}
+        # Per-sensor random phase + a shared clock so numeric readings gently
+        # drift over time (realistic "live" telemetry) instead of sitting flat.
+        self._phase: dict[str, float] = {}
+        self._t0 = time.monotonic()
         self._load_specs()
 
     def _load_specs(self) -> None:
@@ -29,6 +36,7 @@ class SensorSimulator:
                 continue
             self._specs[name] = sensor
             self._values[name] = _default_value(sensor)
+            self._phase[name] = random.uniform(0.0, 2 * math.pi)
 
     # ------------------------------------------------------------------
     def known_sensors(self) -> list[str]:
@@ -51,7 +59,7 @@ class SensorSimulator:
         spec = self._specs.get(name)
         if spec is None:
             return {"sensor": name, "known": False, "error": "unknown sensor"}
-        value = self._values.get(name)
+        value = self._display_value(name, spec, self._values.get(name))
         status = _classify(spec, value)
         return {
             "sensor": name,
@@ -61,6 +69,39 @@ class SensorSimulator:
             "status": status,
             "label": spec.get("label"),
         }
+
+    def _display_value(self, name: str, spec: dict[str, Any], base: Any) -> Any:
+        """Add a small, smooth, time-varying wobble to numeric readings.
+
+        The drift stays close to the base value and never pushes a nominal
+        sensor out of its band, so it looks alive without changing severity or
+        surprising the agent's safety logic. Enum/categorical sensors are left
+        untouched, as is an injected fault value (we only wobble around it).
+        """
+        if spec.get("unit") == "enum" or not isinstance(base, (int, float)):
+            return base
+
+        nominal = spec.get("nominal", {})
+        lo, hi = nominal.get("min"), nominal.get("max")
+        if lo is not None and hi is not None and hi > lo:
+            span = hi - lo
+        else:
+            span = max(abs(base) * 0.1, 1.0)
+
+        t = time.monotonic() - self._t0
+        phase = self._phase.get(name, 0.0)
+        drift = 0.04 * span * math.sin(t / 7.0 + phase) + 0.015 * span * math.sin(
+            t / 2.3 + phase * 1.7
+        )
+        value = base + drift
+
+        # Keep the wobble tight around the base value.
+        value = max(base - 0.06 * span, min(base + 0.06 * span, value))
+        # If the base sits inside the nominal band, never let noise leave it.
+        if lo is not None and hi is not None and lo <= base <= hi:
+            value = max(lo, min(hi, value))
+
+        return round(value, 3)
 
     def snapshot(self) -> list[dict[str, Any]]:
         return [self.read(name) for name in self._specs]
