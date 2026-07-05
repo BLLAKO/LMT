@@ -1,6 +1,6 @@
 # ZeroDelay
 
-ZeroDelay is a hands-free offline maintenance agent for technicians working in disconnected, high-risk environments.
+Hands-free offline AI repair agent for high-risk field technicians using local Gemma, voice input/output, manual-grounded guidance, safety checks, and desktop builds.
 
 It guides repairs step by step using local Gemma, voice input/output, live sensor monitoring, procedure state tracking, inventory checks, and safety validation.
 
