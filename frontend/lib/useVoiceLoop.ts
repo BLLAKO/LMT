@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Decision, MicPermission, VoicePhase } from "./types";
-import { ApiError, converse } from "./api";
+import { ApiError, converse, type RetrievedDiagram } from "./api";
 import { base64ToArrayBuffer, encodeWav, mergeChunks } from "./audio";
 
 export type { VoicePhase };
@@ -20,7 +20,11 @@ const SILENCE_CONFIRM_MS = 900; // pause that ends the technician's turn
 
 type Options = {
   active: boolean;
-  onDecision?: (decision: Decision, query: string) => void;
+  onDecision?: (
+    decision: Decision,
+    query: string,
+    diagram?: RetrievedDiagram | null
+  ) => void;
 };
 
 export function useVoiceLoop({ active, onDecision }: Options) {
@@ -115,7 +119,11 @@ export function useVoiceLoop({ active, onDecision }: Options) {
         const res = await converse(wav);
         setTranscript(res.query);
         setDecision(res.decision);
-        onDecisionRef.current?.(res.decision, res.query);
+        // Surface the most relevant retrieved diagram that actually has an image
+        // (matches the one the backend feeds its vision model).
+        const diagram =
+          res.retrieval?.diagrams?.find((d) => d.image_exists) ?? null;
+        onDecisionRef.current?.(res.decision, res.query, diagram);
         if (res.tts_wav_base64) await playWav(res.tts_wav_base64);
       } catch (e) {
         if (e instanceof ApiError && e.status === 422) {

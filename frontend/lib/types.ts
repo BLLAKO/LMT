@@ -73,4 +73,8 @@ export type Message = {
   action?: DecisionAction;
   risk?: string | null;
   citations?: string[];
+  // A retrieved diagram to display with an AI turn (id maps to a PNG served by
+  // the backend at /diagrams/<id>.png). Stored by id so the URL isn't baked in.
+  diagramId?: string;
+  diagramTitle?: string;
 };

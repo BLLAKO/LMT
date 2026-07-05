@@ -13,6 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Guardrail so a huge upload / base64 blob can't exhaust memory or disk.
@@ -30,6 +31,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve the diagram PNGs so the front-end can display retrieved diagrams in the
+# chat (they live in data/diagrams/<diagram_id>.png). Read-only static mount.
+if config.DIAGRAMS_DIR.exists():
+    app.mount(
+        "/diagrams",
+        StaticFiles(directory=str(config.DIAGRAMS_DIR)),
+        name="diagrams",
+    )
 
 _orchestrator = None
 

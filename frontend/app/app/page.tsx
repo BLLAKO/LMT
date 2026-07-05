@@ -8,6 +8,7 @@ import SensorsPanel from "@/components/app-shell/SensorsPanel";
 import { activeProcedure } from "@/lib/mock-data";
 import { useVoiceLoop } from "@/lib/useVoiceLoop";
 import { loadSessions, saveSessions, type StoredSession } from "@/lib/sessions";
+import { diagramUrl, type RetrievedDiagram } from "@/lib/api";
 import type { Decision, DecisionAction } from "@/lib/types";
 
 const actionMeta: Record<DecisionAction, { label: string; className: string }> = {
@@ -58,7 +59,7 @@ export default function AppPage() {
   // Apply the backend's structured decision: append the turn to the thread and
   // move the local step pointer. The frontend owns state; the backend steers it.
   const handleDecision = useCallback(
-    (decision: Decision, query: string) => {
+    (decision: Decision, query: string, diagram?: RetrievedDiagram | null) => {
       setSessions((prev) =>
         prev.map((s) => {
           if (s.id !== selectedId) return s;
@@ -87,6 +88,8 @@ export default function AppPage() {
                 action: decision.action,
                 risk: decision.risk,
                 citations: decision.citations,
+                diagramId: diagram?.diagram_id,
+                diagramTitle: diagram?.title,
               },
             ],
           };
@@ -203,6 +206,22 @@ export default function AppPage() {
                         <p className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-warning-text">
                           {m.risk}
                         </p>
+                      )}
+                      {m.diagramId && (
+                        <figure className="mt-3 overflow-hidden rounded-xl border border-border bg-sunken">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={diagramUrl(m.diagramId)}
+                            alt={m.diagramTitle || "Retrieved diagram"}
+                            className="h-auto w-full object-contain"
+                            loading="lazy"
+                          />
+                          {m.diagramTitle && (
+                            <figcaption className="px-3 py-1.5 text-xs text-muted">
+                              {m.diagramTitle}
+                            </figcaption>
+                          )}
+                        </figure>
                       )}
                       {m.citations && m.citations.length > 0 && (
                         <p className="mt-2 text-xs text-muted">

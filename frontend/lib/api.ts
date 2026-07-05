@@ -16,14 +16,28 @@ export class ApiError extends Error {
   }
 }
 
+export type RetrievedDiagram = {
+  diagram_id: string;
+  title: string;
+  image_path: string;
+  image_exists: boolean;
+  score: number;
+};
+
 export type ConverseResponse = {
   query: string;
   decision: Decision;
+  retrieval?: { procedures: unknown[]; diagrams: RetrievedDiagram[] };
   sensor_snapshot: Sensor[];
   tool_calls: unknown[];
   tts_wav_base64: string | null;
   transcribed?: boolean;
 };
+
+/** URL for a diagram PNG served by the backend's /diagrams static mount. */
+export function diagramUrl(diagramId: string): string {
+  return `${API_BASE}/diagrams/${encodeURIComponent(diagramId)}.png`;
+}
 
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
