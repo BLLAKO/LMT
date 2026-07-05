@@ -43,8 +43,8 @@ _Spoken fault in, spoken guidance out — in real time, with the network unplugg
 <div align="center">
 <table>
   <tr>
-    <td width="50%"><img src="assets/landing.png" alt="ZeroDelay landing page" /></td>
-    <td width="50%"><img src="assets/app.png" alt="ZeroDelay hands-free voice app in a live repair session" /></td>
+    <td width="50%"><img src="assets/web-page.png" alt="ZeroDelay landing page" /></td>
+    <td width="50%"><img src="assets/voice-ai.png" alt="ZeroDelay hands-free voice app in a live repair session" /></td>
   </tr>
   <tr>
     <td align="center"><em>The landing page &amp; desktop download</em></td>
