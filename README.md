@@ -2,7 +2,7 @@
 
 <img src="frontend/public/logo.png" alt="ZeroDelay" width="360" />
 
-### A hands-free voice copilot that fixes things where the internet can't reach.
+### ZeroDelay is a hands-free, on-device voice copilot for high-risk technicians doing manual work on-site and offline, like astronauts on a spacewalk, offshore platform technicians, or engineers on a ship mid-voyage.
 
 [![Google DeepMind — Edge / On-Device Track](https://img.shields.io/badge/Google_DeepMind-Edge_%2F_On--Device_Track-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)](#the-track)
 [![Runs 100% offline](https://img.shields.io/badge/Runs-100%25_Offline-2EA44F?style=for-the-badge)](#why-on-device-is-the-whole-point)
