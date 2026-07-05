@@ -32,13 +32,11 @@ This is exactly the constraint ZeroDelay is designed around. The people we built
 
 <div align="center">
 
-<video src="assets/demo.mp4" controls muted playsinline width="760"></video>
+[Watch the ZeroDelay demo on YouTube](https://www.youtube.com/watch?v=6ydUqKCO4Sw)
 
 _Spoken fault in, spoken guidance out — in real time, with the network unplugged._
 
 </div>
-
-> Video not playing inline on GitHub? [Watch `assets/demo.mp4`](assets/demo.mp4).
 
 <div align="center">
 <table>
