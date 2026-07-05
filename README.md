@@ -2,7 +2,7 @@
 
 <img src="frontend/public/logo.png" alt="ZeroDelay" width="360" />
 
-### ZeroDelay is a hands-free, on-device voice copilot for high-risk technicians doing manual work on-site and offline, like astronauts on a spacewalk, offshore platform technicians, or engineers on a ship mid-voyage.
+### A hands-free voice copilot that fixes things where the internet can't reach.
 
 [![Google DeepMind — Edge / On-Device Track](https://img.shields.io/badge/Google_DeepMind-Edge_%2F_On--Device_Track-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)](#the-track)
 [![Runs 100% offline](https://img.shields.io/badge/Runs-100%25_Offline-2EA44F?style=for-the-badge)](#why-on-device-is-the-whole-point)
@@ -13,7 +13,7 @@
 
 ---
 
-**ZeroDelay is a hands-free, on-device voice copilot for technicians doing manual work offline, on-site:** an astronaut on a spacewalk, a miner a kilometre underground, an offshore rig technician, or an engineer in a ship's engine room mid-voyage.
+**ZeroDelay is a hands-free, on-device voice copilot for high-risk technicians doing manual work on-site and offline, like astronauts on a spacewalk, offshore platform technicians, or engineers on a ship mid-voyage.
 
 You describe the fault out loud. It walks you through the repair one step at a time, waits for you to confirm each step hands-free, watches the sensors while you work, and stops you *before* you do something dangerous. All of it runs on the laptop or tablet in front of you.
 
