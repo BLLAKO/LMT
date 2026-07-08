@@ -5,11 +5,12 @@ offline, voice-guided repair/maintenance copilot. Built with Next.js
 (App Router), TypeScript, Tailwind CSS, and Framer Motion, with an Electron
 wrapper for a real installable desktop app.
 
-This is **frontend only**. The real Ollama/Gemma model, speech-to-text,
-text-to-speech, and procedure/sensor engine are not wired up yet — every
-integration point is stubbed and marked with `// TODO: real integration`
-comments (see `lib/mock-data.ts`, `lib/useMicAmplitude.ts`,
-`electron/main.js`).
+The voice app is **wired to the ZeroDelay backend** ([`../backend`](../backend)) over
+HTTP: it records the mic, POSTs each turn to `/converse`, and plays back the reply —
+real Gemma speech-to-text, retrieval, reasoning, diagram vision, and Piper TTS,
+alongside a live telemetry panel driven by the `/sensors` endpoints. The only piece
+still faked is the step checklist shown in the overlay (one hardcoded demo procedure);
+see [the notes below](#notes-on-the-demo-state).
 
 ## Structure
 
@@ -21,11 +22,14 @@ app/
   layout.tsx, globals.css
 components/
   landing/              Landing page sections (Hero, Header, DownloadCta, ...)
-  app-shell/            Sidebar, VoiceVisual, StepOverlay, LoginForm
+  app-shell/            Sidebar, VoiceVisual, StepOverlay, SensorsPanel, LoginForm
 lib/
-  mock-data.ts           Demo procedure content + types
-  types.ts
-  useMicAmplitude.ts     Web Audio mic-level hook driving the voice visual
+  api.ts                 Thin HTTP client for the FastAPI backend (+ diagram URLs)
+  useVoiceLoop.ts        Hands-free loop: record mic -> /converse -> play TTS reply
+  audio.ts               PCM -> WAV encode + base64-WAV decode helpers
+  sessions.ts            On-device (localStorage) persistence for past discussions
+  mock-data.ts           The one hardcoded demo procedure (drives the step overlay)
+  types.ts               Shared types, incl. the backend decision/sensor contract
 electron/
   main.js                Electron entry point — serves the static export
                          locally and opens straight to the app (no landing page)
@@ -53,6 +57,10 @@ Open http://localhost:3000. Routes:
 - `/` — landing page
 - `/login?os=mac|pc` — company/access-code gate, auto-triggers the download on success
 - `/app` — the voice app shell (also what the desktop app opens directly into)
+
+The landing page works on its own, but `/app` needs the backend running on
+`http://127.0.0.1:8000` (see [`../backend/README.md`](../backend/README.md)). Point it
+at a different host with `NEXT_PUBLIC_ZD_API`.
 
 ## Build the desktop app (macOS)
 
@@ -82,13 +90,17 @@ A Windows build isn't packaged — cross-building an `.exe` from macOS needs
 Wine or a Windows/CI machine. The `build.win` config in `package.json` can
 be added once that's needed.
 
-## Notes on the mock/demo state
+## Notes on the demo state
 
-- The voice app uses one hardcoded demo procedure (`lib/mock-data.ts`,
-  adapted from `data/procedures/01-eva-prep-emu-airlock.md` in the parent
-  repo) — every "New" session loads the same steps.
-- The voice visual is driven by real microphone input (Web Audio API) once
-  permission is granted, but step advancement uses simple voice-activity
-  detection (speak, then pause) rather than real speech-to-text.
-- The AI's own "speaking" turn is a synthetic animation, since there's no
-  TTS playback wired up yet.
+- Voice, retrieval, reasoning, diagrams, and speech are **real**: every turn is
+  recorded, POSTed to the backend's `/converse`, transcribed by Gemma, answered as a
+  structured decision, and played back as Piper TTS audio. The AI's "speaking" turn is
+  that audio, not an animation. The telemetry panel and its "inject fault" buttons hit
+  the live `/sensors` endpoints.
+- Turn-taking is voice-activity detection (speak, then pause) rather than a wake word —
+  a short pause ends your turn and sends the clip.
+- The step checklist in the overlay is still one hardcoded demo procedure
+  (`lib/mock-data.ts`, adapted from `data/procedures/01-eva-prep-emu-airlock.md`); the
+  pointer just advances locally whenever the backend returns an `advance` decision.
+- Sessions and their full threads are saved in `localStorage`, so past discussions
+  survive a reload and nothing leaves the device.
