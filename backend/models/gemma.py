@@ -7,6 +7,7 @@ to fit an 8GB GPU. Fully offline after the weights are downloaded once.
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -95,18 +96,32 @@ class GemmaRuntime:
     # ------------------------------------------------------------------
     # Generation helpers
     # ------------------------------------------------------------------
-    def _generate(self, messages: list[dict[str, Any]], max_new_tokens: int) -> str:
-        self.load()
-        import torch
-
-        inputs = self._processor.apply_chat_template(
+    def _build_inputs(self, messages: list[dict[str, Any]], thinking: bool):
+        # This model's chat template exposes a reasoning channel gated by
+        # `enable_thinking` (off by default). Only pass it when thinking is on, so the
+        # non-thinking path stays byte-identical to before (and STT never "thinks").
+        template_kwargs: dict[str, Any] = {}
+        if thinking:
+            template_kwargs["enable_thinking"] = True
+        return self._processor.apply_chat_template(
             messages,
             add_generation_prompt=True,
             tokenize=True,
             return_dict=True,
             return_tensors="pt",
+            **template_kwargs,
         ).to(self._model.device)
 
+    def _generate(
+        self,
+        messages: list[dict[str, Any]],
+        max_new_tokens: int,
+        thinking: bool = False,
+    ) -> str:
+        self.load()
+        import torch
+
+        inputs = self._build_inputs(messages, thinking)
         input_len = inputs["input_ids"].shape[-1]
         with self._gen_lock, torch.inference_mode():
             generated = self._model.generate(
@@ -116,6 +131,52 @@ class GemmaRuntime:
             )
         new_tokens = generated[0][input_len:]
         return self._processor.decode(new_tokens, skip_special_tokens=True).strip()
+
+    def _generate_stream(
+        self,
+        messages: list[dict[str, Any]],
+        max_new_tokens: int,
+        thinking: bool = False,
+    ) -> Iterator[str]:
+        """Yield decoded text as it is generated, using a background generate thread.
+
+        Generation is serialized on `_gen_lock` (held for the whole stream) so parallel
+        API requests never interleave on a single GPU, matching `_generate`.
+        """
+        self.load()
+        import torch
+        from transformers import TextIteratorStreamer
+
+        inputs = self._build_inputs(messages, thinking)
+        tokenizer = getattr(self._processor, "tokenizer", self._processor)
+        streamer = TextIteratorStreamer(
+            tokenizer, skip_prompt=True, skip_special_tokens=True
+        )
+        generation_kwargs = dict(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            streamer=streamer,
+        )
+
+        def _run() -> None:
+            try:
+                with torch.inference_mode():
+                    self._model.generate(**generation_kwargs)
+            except Exception:
+                # The consumer just sees the stream end; the caller parses whatever
+                # text arrived (leniently, with a fallback decision).
+                pass
+
+        with self._gen_lock:
+            thread = threading.Thread(target=_run, daemon=True)
+            thread.start()
+            try:
+                for text in streamer:
+                    if text:
+                        yield text
+            finally:
+                thread.join()
 
     # ------------------------------------------------------------------
     # Public API
@@ -140,15 +201,50 @@ class GemmaRuntime:
         prompt: str,
         images: list[str | Path] | None = None,
         max_new_tokens: int | None = None,
+        thinking: bool | None = None,
     ) -> str:
-        """Text (optionally + images) -> text. Used for the structured decision."""
+        """Text (optionally + images) -> text. Used for the structured decision.
+
+        `thinking` toggles the model's reasoning channel; None falls back to
+        config.GEMMA_THINKING (env ZD_GEMMA_THINKING). Passing it explicitly is handy
+        for A/B timing both modes in one process (one model load).
+        """
+        messages = self._reason_messages(prompt, images)
+        use_thinking = config.GEMMA_THINKING if thinking is None else thinking
+        return self._generate(
+            messages,
+            max_new_tokens or config.GEMMA_MAX_NEW_TOKENS,
+            thinking=use_thinking,
+        )
+
+    def reason_stream(
+        self,
+        prompt: str,
+        images: list[str | Path] | None = None,
+        max_new_tokens: int | None = None,
+        thinking: bool | None = None,
+    ) -> Iterator[str]:
+        """Like `reason`, but yields decoded text chunks as they are generated.
+
+        This is one continuous generation pass (the orchestrator resolves every fact
+        before calling), so the stream never stalls mid-answer waiting on a tool.
+        """
+        messages = self._reason_messages(prompt, images)
+        use_thinking = config.GEMMA_THINKING if thinking is None else thinking
+        yield from self._generate_stream(
+            messages,
+            max_new_tokens or config.GEMMA_MAX_NEW_TOKENS,
+            thinking=use_thinking,
+        )
+
+    @staticmethod
+    def _reason_messages(
+        prompt: str, images: list[str | Path] | None
+    ) -> list[dict[str, Any]]:
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         for img in images or []:
             content.append({"type": "image", "image": str(img)})
-        messages = [{"role": "user", "content": content}]
-        return self._generate(
-            messages, max_new_tokens or config.GEMMA_MAX_NEW_TOKENS
-        )
+        return [{"role": "user", "content": content}]
 
 
 def _resolve_model_class():

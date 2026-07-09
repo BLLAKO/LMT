@@ -132,6 +132,7 @@ python -m backend.cli converse MarsMind/astronaut_query.wav
 ```
 uvicorn backend.api.server:app --port 8000
 # set ZD_WARMUP=1 to load Gemma at startup instead of first request
+# set ZD_OFFLINE=1 to forbid every network call once the models are cached (the offline demo)
 ```
 
 ### Endpoints (for the JS front-end)
@@ -139,6 +140,7 @@ uvicorn backend.api.server:app --port 8000
 | Method | Path | Body | Returns |
 | --- | --- | --- | --- |
 | GET | `/health` | - | status + model id |
+| GET | `/ready` | - | deep readiness (vector index + Piper voice + offline flag) |
 | GET | `/procedures` | - | procedure list |
 | GET | `/sensors` | - | live telemetry snapshot |
 | POST | `/sensors/inject` | `{name, value}` | new reading (demo anomalies) |
@@ -148,13 +150,16 @@ uvicorn backend.api.server:app --port 8000
 | POST | `/converse` | multipart `audio` (+ `image?`) | `{query, decision, tts_wav_base64}` |
 | POST | `/tts` | `{text}` | `audio/wav` |
 
-The decision JSON shape is documented in [`agent/schema.py`](agent/schema.py).
+Retrieved diagram PNGs are also served read-only at `/diagrams/<diagram_id>.png`, so the
+front-end can show the schematic the vision model just looked at. The decision JSON shape
+is documented in [`agent/schema.py`](agent/schema.py).
 
 ## Configuration
 
-Override via environment variables (see [`config.py`](config.py)): `ZD_GEMMA_MODEL`,
-`ZD_GEMMA_4BIT`, `ZD_GEMMA_DEVICE_MAP`, `ZD_EMBED_MODEL`, `ZD_EMBED_DIM`, `ZD_PIPER_VOICE`,
-`ZD_TOP_K`, `ZD_TOOL_LOOP`, `ZD_MAX_NEW_TOKENS`, `ZD_WARMUP`.
+Override via environment variables (see [`config.py`](config.py)): `ZD_OFFLINE`,
+`ZD_GEMMA_MODEL`, `ZD_GEMMA_4BIT`, `ZD_GEMMA_DEVICE_MAP`, `ZD_EMBED_MODEL`,
+`ZD_EMBED_DEVICE`, `ZD_EMBED_DIM`, `ZD_PIPER_VOICE`, `ZD_TOP_K`, `ZD_TOOL_LOOP`,
+`ZD_MAX_NEW_TOKENS`, `ZD_ASR_MAX_NEW_TOKENS`, `ZD_WARMUP`.
 
 ## Troubleshooting (read this before integrating)
 
