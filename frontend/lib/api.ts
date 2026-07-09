@@ -61,6 +61,71 @@ export async function converse(wav: Blob): Promise<ConverseResponse> {
   return asJson<ConverseResponse>(res);
 }
 
+export type ConverseStreamHandlers = {
+  /** Fired once with the transcribed technician utterance. */
+  onQuery?: (query: string) => void;
+  /** Fired with each chunk of the spoken answer as the model generates it. */
+  onDelta?: (text: string) => void;
+};
+
+/**
+ * Streaming version of {@link converse}: transcribes, then streams the single
+ * reasoning pass as newline-delimited JSON. `onDelta` fires continuously as the
+ * spoken answer is generated; the resolved {@link ConverseResponse} (decision,
+ * retrieval, TTS) is returned once the turn completes.
+ */
+export async function converseStream(
+  wav: Blob,
+  handlers: ConverseStreamHandlers = {}
+): Promise<ConverseResponse> {
+  const form = new FormData();
+  form.append("audio", wav, "input.wav");
+  const res = await fetch(`${API_BASE}/converse/stream`, {
+    method: "POST",
+    body: form,
+  });
+  // Non-2xx (incl. 422 "no speech") has a JSON error body — reuse the error path.
+  if (!res.ok || !res.body) {
+    return asJson<ConverseResponse>(res);
+  }
+
+  type StreamEvent =
+    | { type: "query"; text: string }
+    | { type: "delta"; text: string }
+    | { type: "final"; result: ConverseResponse }
+    | { type: "error"; detail: string };
+
+  let final: ConverseResponse | null = null;
+  const handleLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const msg = JSON.parse(trimmed) as StreamEvent;
+    if (msg.type === "query") handlers.onQuery?.(msg.text);
+    else if (msg.type === "delta") handlers.onDelta?.(msg.text);
+    else if (msg.type === "final") final = msg.result;
+    else if (msg.type === "error") throw new ApiError(500, msg.detail);
+  };
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      handleLine(line);
+    }
+  }
+  if (buffer.trim()) handleLine(buffer); // trailing line without newline
+
+  if (!final) throw new ApiError(500, "Stream ended without a final result.");
+  return final;
+}
+
 export async function getSensors(): Promise<{ sensors: Sensor[] }> {
   return asJson(await fetch(`${API_BASE}/sensors`));
 }

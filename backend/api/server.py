@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -188,6 +189,60 @@ def converse(
     return _with_audio(result)
 
 
+@app.post("/converse/stream")
+def converse_stream(
+    audio: UploadFile = File(...),
+    image: UploadFile | None = File(None),
+    speak: bool = Form(True),
+):
+    """Streaming sibling of /converse.
+
+    Transcribes first, then streams the single reasoning pass as newline-delimited
+    JSON so the UI can render the spoken answer as it is generated (continuously —
+    facts are resolved up front, so there is one pass with no mid-answer stalls).
+    Emits lines: {"type":"query"|"delta"|"final"|"error", ...}.
+    """
+    from fastapi.responses import StreamingResponse
+
+    tmp = _save_upload(audio, suffix=".wav")
+    image_path = None
+    try:
+        norm = vad.prepare_audio(tmp)
+        if not vad.detect_speech(norm):
+            raise HTTPException(status_code=422, detail="No speech detected in audio.")
+        if image is not None:
+            image_path = _save_upload(
+                image, suffix=Path(image.filename or "img.png").suffix
+            )
+        query = get_orchestrator().gemma.transcribe(norm)
+    except BaseException:
+        # The stream never starts, so drop the (still-unused) image upload here.
+        _cleanup(image_path)
+        raise
+    finally:
+        # Audio is only needed for transcription; the reasoning stream never reads it.
+        _cleanup(tmp)
+
+    def _events():
+        try:
+            yield _ndjson({"type": "query", "text": query})
+            for kind, payload in get_orchestrator().stream_text(
+                query, live_image_path=image_path, speak=speak
+            ):
+                if kind == "delta":
+                    yield _ndjson({"type": "delta", "text": payload})
+                else:  # "final"
+                    final = _with_audio(payload)
+                    final["transcribed"] = True
+                    yield _ndjson({"type": "final", "result": final})
+        except Exception as exc:  # keep the stream well-formed even on failure
+            yield _ndjson({"type": "error", "detail": str(exc)})
+        finally:
+            _cleanup(image_path)
+
+    return StreamingResponse(_events(), media_type="application/x-ndjson")
+
+
 @app.post("/tts")
 def tts(req: TTSRequest):
     from fastapi.responses import Response
@@ -248,3 +303,8 @@ def _with_audio(result: dict) -> dict:
     else:
         result["tts_wav_base64"] = None
     return result
+
+
+def _ndjson(obj: dict) -> str:
+    """Serialize one newline-delimited JSON event for the streaming response."""
+    return json.dumps(obj) + "\n"

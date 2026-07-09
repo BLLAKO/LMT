@@ -102,10 +102,11 @@ export default function AppPage() {
   const sessionActive = current !== null && !current.completed;
   const voice = useVoiceLoop({ active: sessionActive, onDecision: handleDecision });
 
-  // Keep the thread scrolled to the latest turn / thinking indicator.
+  // Keep the thread scrolled to the latest turn / thinking indicator (including as
+  // the streamed answer grows).
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [current?.messages.length, voice.phase]);
+  }, [current?.messages.length, voice.phase, voice.partial]);
 
   function startNewSession() {
     const id = `session-${Date.now()}`;
@@ -235,11 +236,24 @@ export default function AppPage() {
 
               {voice.phase === "thinking" && (
                 <div className="flex justify-start">
-                  <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3 shadow-sm">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.3s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.15s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" />
-                  </div>
+                  {voice.partial ? (
+                    // The answer streaming in live, token by token.
+                    <div className="max-w-[92%] rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3 text-sm shadow-sm">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span className="text-xs font-medium text-primary">ZeroDelay</span>
+                      </div>
+                      <p className="leading-relaxed text-secondary">
+                        {voice.partial}
+                        <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse rounded-sm bg-muted align-middle" />
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3 shadow-sm">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.3s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.15s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" />
+                    </div>
+                  )}
                 </div>
               )}
 

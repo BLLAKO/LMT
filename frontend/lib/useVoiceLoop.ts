@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Decision, MicPermission, VoicePhase } from "./types";
-import { ApiError, converse, type RetrievedDiagram } from "./api";
+import {
+  ApiError,
+  converse,
+  converseStream,
+  type ConverseResponse,
+  type RetrievedDiagram,
+} from "./api";
 import { base64ToArrayBuffer, encodeWav, mergeChunks } from "./audio";
 
 export type { VoicePhase };
@@ -32,6 +38,7 @@ export function useVoiceLoop({ active, onDecision }: Options) {
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const [amplitude, setAmplitude] = useState(0);
   const [transcript, setTranscript] = useState<string | null>(null);
+  const [partial, setPartial] = useState(""); // spoken answer streaming in, live
   const [decision, setDecision] = useState<Decision | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,12 +119,30 @@ export function useVoiceLoop({ active, onDecision }: Options) {
       if (busyRef.current) return;
       busyRef.current = true;
       setError(null);
+      setPartial("");
       setPhaseSafe("thinking");
       setAmplitude(0.16); // gentle "alive" pulse while the model thinks
 
       try {
-        const res = await converse(wav);
-        setTranscript(res.query);
+        // Stream the single reasoning pass so the answer builds up live. Facts are
+        // resolved server-side before generation, so the words arrive continuously.
+        let res: ConverseResponse;
+        try {
+          res = await converseStream(wav, {
+            onQuery: (q) => setTranscript(q),
+            onDelta: (t) => setPartial((prev) => prev + t),
+          });
+        } catch (e) {
+          // 422 (no speech) is a normal outcome — surface it, don't retry.
+          if (e instanceof ApiError && e.status === 422) throw e;
+          // Streaming failed otherwise; fall back to the non-streaming turn.
+          setPartial("");
+          res = await converse(wav);
+          setTranscript(res.query);
+        }
+        // The final decision carries the authoritative spoken text, so drop the
+        // live preview and let the parent render the completed AI message.
+        setPartial("");
         setDecision(res.decision);
         // Surface the most relevant retrieved diagram that actually has an image
         // (matches the one the backend feeds its vision model).
@@ -135,6 +160,7 @@ export function useVoiceLoop({ active, onDecision }: Options) {
         }
       } finally {
         busyRef.current = false;
+        setPartial("");
         armCapture();
         // Return to listening only if the session is still open.
         if (ctxRef.current) setPhaseSafe("listening");
@@ -244,5 +270,5 @@ export function useVoiceLoop({ active, onDecision }: Options) {
     };
   }, [active, armCapture, handleUtterance, setPhaseSafe]);
 
-  return { permission, phase, amplitude, transcript, decision, error };
+  return { permission, phase, amplitude, transcript, partial, decision, error };
 }
